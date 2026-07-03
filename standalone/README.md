@@ -36,16 +36,19 @@ locally-run copy can reach an engine process on `localhost` (see
 
 ## Relationship to `web/`
 
-`web/` is the source of truth. The files under `lib/` and `composables/` here are
-verbatim copies of their `web/src/` counterparts, so refreshing them is a plain
-copy:
+`web/` is the source of truth. The files under `lib/` and `composables/` (and
+`styles.css`) here are verbatim copies of their `web/src/` counterparts. Refresh
+them — and check whether they've drifted — with `sync.sh`:
 
 ```bash
-cp ../web/src/styles.css styles.css
-cp ../web/src/composables/useChopsticks.js composables/
-cp ../web/src/lib/*.js lib/
+./sync.sh          # copy the current web/src sources over the copies here
+./sync.sh --check  # fail if any copy has drifted (this is what CI runs)
 ```
 
+The Pages deploy runs `sync.sh --check` before building, so a forgotten refresh
+fails the build instead of silently shipping a stale standalone version.
+
 Only `index.html` is maintained by hand — it inlines the `web/src/components/*.vue`
-templates (with the store exposed as `g`, so every binding matches the SFCs). If
-you change a component's markup in `web/`, mirror it here.
+templates (with the store exposed as `g`, so every binding matches the SFCs), so
+`sync.sh` can't check it. If you change a component's markup in `web/`, mirror it
+here yourself.

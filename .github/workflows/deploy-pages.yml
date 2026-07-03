@@ -28,6 +28,9 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+      - name: Check standalone/ is in sync with web/src
+        working-directory: ${{ github.workspace }}
+        run: standalone/sync.sh --check
       - uses: actions/setup-node@v4
         with:
           node-version: 20
