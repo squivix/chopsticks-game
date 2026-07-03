@@ -80,6 +80,34 @@ describe("store — moves and undo", () => {
     expect(store.logEntries[0].player).toBe(0);
     expect(typeof store.logEntries[0].label).toBe("string");
   });
+
+  // "Merge onto one hand" is the mirror of "Split evenly": while rearranging,
+  // it piles both live hands onto one. That's a suicide split, so it's only
+  // offered under rules that allow one (here the "suicide" preset).
+  it("offers a Merge shortcut that piles fingers onto one hand", async () => {
+    const { store } = mountStore();
+    store.currentPreset = "suicide";
+    store.presetChanged();
+    store.setMode("two");
+    store.startGame();
+    expect(store.game.hands[0]).toEqual([1, 1]); // both hands live
+
+    store.rearrange = store.game.hands[0].slice(); // enter "move fingers" mode
+    await nextTick();
+    const merge = store.play.buttons.find((b) => b.text === "Merge onto one hand");
+    expect(merge).toBeTruthy();
+
+    merge.action();
+    expect(store.rearrange).toEqual([2, 0]); // total on one hand, the other emptied
+  });
+
+  it("does not offer Merge when suicide splits are illegal (standard rules)", () => {
+    const { store } = mountStore();
+    store.setMode("two");
+    store.startGame(); // standard preset — killing your own hand isn't allowed
+    store.rearrange = store.game.hands[0].slice();
+    expect(store.play.buttons.some((b) => b.text === "Merge onto one hand")).toBe(false);
+  });
 });
 
 describe("store — toggles persist", () => {

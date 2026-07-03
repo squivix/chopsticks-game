@@ -257,6 +257,14 @@ function createStore() {
         if ((even[0] !== ra[0] || even[1] !== ra[1]) && matchesLegal(even))
           add("Split evenly", () => { rearrange.value = even; });
       }
+      if (ra[0] !== 0 && ra[1] !== 0) {
+        const tot = ra[0] + ra[1];
+        // Pile everything onto the hand that already holds more (Swap covers
+        // the other side). The mirror of Split evenly.
+        const merged = ra[0] >= ra[1] ? [tot, 0] : [0, tot];
+        if (matchesLegal(merged))
+          add("Merge onto one hand", () => { rearrange.value = merged; });
+      }
       add("Cancel", () => { rearrange.value = null; });
       return { hint, buttons };
     }
