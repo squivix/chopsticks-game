@@ -47,7 +47,7 @@ src/
     useChopsticks.js the game store (all reactive state + behaviour), shared
                      with every component via provide/inject
   lib/               framework-agnostic core, unit-tested in isolation:
-    engine.js        rules engine (JS port of ../../chopsticks.py)
+    engine.js        rules engine (JS port of ../../python/chopsticks.py)
     solver.js        exact retrograde-analysis solver (perfect play)
     cpu.js           CPU strategies (dummy, optimal, remote)
     hand-svg.js      SVG hand renderer

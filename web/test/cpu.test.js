@@ -5,8 +5,8 @@ import ChopsticksCPU from "../src/lib/cpu.js";
 const { CPUS, successorState, opponentCanKillMyHand } = ChopsticksCPU;
 
 describe("cpu — registry", () => {
-  it("exposes the dummy, optimal and remote strategies", () => {
-    expect(Object.keys(CPUS)).toEqual(["dummy", "optimal", "remote"]);
+  it("exposes the dummy, random, optimal and remote strategies", () => {
+    expect(Object.keys(CPUS)).toEqual(["dummy", "random", "optimal", "remote"]);
     for (const name of Object.keys(CPUS)) {
       expect(typeof CPUS[name].choose).toBe("function");
       expect(typeof CPUS[name].description).toBe("string");
@@ -15,7 +15,7 @@ describe("cpu — registry", () => {
 });
 
 describe("cpu — local strategies pick legal moves", () => {
-  for (const name of ["dummy", "optimal"]) {
+  for (const name of ["dummy", "random", "optimal"]) {
     it(`${name}.choose returns one of the legal moves`, () => {
       const g = C.newGame({}, ["A", "B"]);
       const moves = C.legalMoves(g);

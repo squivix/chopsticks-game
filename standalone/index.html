@@ -122,7 +122,7 @@
         <div id="watchbar" :class="{ show: g.watchLive }">
           <span class="wlabel">CPU vs CPU:</span>
           <button @click="g.toggleAuto">{{ g.autoToggleText }}</button>
-          <button v-show="g.showStep" :disabled="g.stepDisabled" @click="g.stepCPU">Step ▶</button>
+          <button v-show="g.showStep" :disabled="g.stepDisabled" @click="g.stepCPU">Step ⏭</button>
         </div>
         <div class="player-row">
           <div class="name-tag p1" :class="{ active: g.activeP === 1 }"><span class="dot"></span><span class="nm">{{ g.labelTop }}</span></div>

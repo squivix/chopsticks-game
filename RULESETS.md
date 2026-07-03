@@ -2,7 +2,7 @@
 
 A catalog of every rule and rule variation of the hand game **Chopsticks** (a.k.a. *Splits*, *Calculator*, *Sticks*) found across published sources. The local copy of the Wikipedia article lives at [reference/chopsticks-wikipedia.wiki](reference/chopsticks-wikipedia.wiki). All sources are listed at the [bottom](#sources).
 
-The companion program [chopsticks.py](chopsticks.py) can play any combination of the rules below that applies to a two-player game (see [Presets](#presets-in-chopstickspy)).
+The companion program [chopsticks.py](python/chopsticks.py) can play any combination of the rules below that applies to a two-player game (see [Presets](#presets-in-chopstickspy)).
 
 ---
 
@@ -144,9 +144,9 @@ Strategy trivia from the sources: standard rollover rules are a draw by repetiti
 
 ---
 
-## 5. Presets in [chopsticks.py](chopsticks.py) and the [web app](web/)
+## 5. Presets in [chopsticks.py](python/chopsticks.py) and the [web app](web/)
 
-Two equivalent implementations share these presets: the terminal game ([chopsticks.py](chopsticks.py)) and a Vue 3 + Vite web app with visual hands (in [web/](web/) — run `npm install && npm run dev` there, or use the no-build copy in [standalone/](standalone/); the rules engine lives in [web/src/lib/engine.js](web/src/lib/engine.js)). Run `python3 chopsticks.py --list-presets` for the live list. Highlights:
+Two equivalent implementations share these presets: the terminal game ([chopsticks.py](python/chopsticks.py)) and a Vue 3 + Vite web app with visual hands (in [web/](web/) — run `npm install && npm run dev` there, or use the no-build copy in [standalone/](standalone/); the rules engine lives in [web/src/lib/engine.js](web/src/lib/engine.js)). Run `python3 python/chopsticks.py --list-presets` for the live list. Highlights:
 
 | Preset | Ruleset |
 |---|---|
@@ -173,7 +173,7 @@ Two equivalent implementations share these presets: the terminal game ([chopstic
 | `integers` | Negative/zero hands: flip a hand to negate it (`+3 → −3`); a hand dies at `+5` or `−5` |
 | `kitchen-sink` | Everything legal at once |
 
-Every axis is also individually overridable: `python3 chopsticks.py --preset rollover --set suicide=true --set base=6 --set start=2,2`.
+Every axis is also individually overridable: `python3 python/chopsticks.py --preset rollover --set suicide=true --set base=6 --set start=2,2`.
 
 **Implementation notes for the sparsely-specified variants.** The sources only
 sketch these, so the engine fills the gaps with the most faithful, self-consistent

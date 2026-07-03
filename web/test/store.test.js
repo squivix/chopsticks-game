@@ -83,12 +83,13 @@ describe("store — moves and undo", () => {
 });
 
 describe("store — toggles persist", () => {
-  it("toggleCheat flips state and writes localStorage", () => {
+  it("toggleCheat flips state but never persists (always off by default)", () => {
+    localStorage.setItem("chopsticks.cheat", "1"); // even a stale flag is ignored
     const { store } = mountStore();
-    expect(store.cheat).toBe(false);
+    expect(store.cheat).toBe(false); // starts off regardless of storage
     store.toggleCheat();
     expect(store.cheat).toBe(true);
-    expect(localStorage.getItem("chopsticks.cheat")).toBe("1");
+    expect(localStorage.getItem("chopsticks.cheat")).toBe("1"); // untouched, not written by the toggle
   });
 
   it("toggleTheme swaps theme and updates the document attribute", async () => {

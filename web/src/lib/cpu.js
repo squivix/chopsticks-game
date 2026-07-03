@@ -78,6 +78,13 @@ const CPUS = {
     },
   },
 
+  random: {
+    description: "Plays a uniformly random legal move — no strategy at all.",
+    choose(g, moves, rng = Math.random) {
+      return moves[Math.floor(rng() * moves.length)];
+    },
+  },
+
   optimal: {
     description: "Perfect play. Solves the current ruleset exactly (retrograde " +
       "analysis over the whole position graph) and plays a game-theoretically " +

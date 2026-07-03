@@ -12,9 +12,9 @@ documented in [RULESETS.md](RULESETS.md); solver/strategy notes are in
 **Terminal (Python, no dependencies):**
 
 ```bash
-python3 chopsticks.py                 # standard schoolyard rules
-python3 chopsticks.py --preset meta --show-rules
-python3 chopsticks.py --list-presets
+python3 python/chopsticks.py                 # standard schoolyard rules
+python3 python/chopsticks.py --preset meta --show-rules
+python3 python/chopsticks.py --list-presets
 ```
 
 **Web app.** Two flavours, same game:
@@ -35,18 +35,19 @@ reach a local engine.
 Set a web-app player to **CPU: remote** to hand its moves to a separate process
 on a `localhost` port:
 
-- [`remote_cpu_server.py`](remote_cpu_server.py) — a simple example engine.
-- [`mcp_cpu_server.py`](mcp_cpu_server.py) — exposes the engine over MCP so an
+- [`python/remote_cpu_server.py`](python/remote_cpu_server.py) — a simple example engine.
+- [`python/mcp_cpu_server.py`](python/mcp_cpu_server.py) — exposes the engine over MCP so an
   assistant can play.
 
 ## Layout
 
 ```
-chopsticks.py          terminal game + reference rules engine
+python/                the Python side
+  chopsticks.py        terminal game + reference rules engine
+  remote_cpu_server.py example external CPU (HTTP)
+  mcp_cpu_server.py    external CPU over MCP
 web/                   Vue 3 + Vite single-page app (source of truth)
 standalone/            no-build copy of the app (static files)
-remote_cpu_server.py   example external CPU (HTTP)
-mcp_cpu_server.py      external CPU over MCP
 RULESETS.md            every rule axis + the shared presets
 STRATEGY.md            solver + strategy notes
 ```

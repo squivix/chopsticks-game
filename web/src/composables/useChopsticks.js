@@ -53,7 +53,7 @@ function createStore() {
   ChopsticksCPU.config.ports = remotePorts.value.slice();
 
   const watchStep = ref(localStorage.getItem("chopsticks.watchStep") === "1");
-  const cheat = ref(localStorage.getItem("chopsticks.cheat") === "1");
+  const cheat = ref(false); // always off at the start of a session; not persisted
   const game = shallowRef(null);
   const selected = ref(null);   // {p, h} of the selected origin hand
   const rearrange = ref(null);  // [left, right] working values while moving fingers
@@ -599,8 +599,7 @@ function createStore() {
     localStorage.setItem("chopsticks.theme", theme.value);
   }
   function toggleCheat() {
-    cheat.value = !cheat.value;
-    localStorage.setItem("chopsticks.cheat", cheat.value ? "1" : "0");
+    cheat.value = !cheat.value; // intentionally not persisted — always off by default
   }
   function toggleAuto() {
     watchStep.value = !watchStep.value;

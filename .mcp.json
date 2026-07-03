@@ -3,7 +3,7 @@
     "chopsticks-cpu": {
       "command": "python3",
       "args": [
-        "/home/ordem/Projects/Chopsticks/mcp_cpu_server.py",
+        "/home/ordem/Projects/Chopsticks/python/mcp_cpu_server.py",
         "--port",
         "8765",
         "--name",

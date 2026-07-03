@@ -32,7 +32,7 @@ lib/                     copies of the framework-agnostic core:
 
 Unlike the Pages build, this version **keeps the "CPU: remote" player**, since a
 locally-run copy can reach an engine process on `localhost` (see
-`../remote_cpu_server.py` and `../mcp_cpu_server.py`).
+`../python/remote_cpu_server.py` and `../python/mcp_cpu_server.py`).
 
 ## Relationship to `web/`
 
