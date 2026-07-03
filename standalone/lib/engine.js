@@ -31,6 +31,9 @@ const DEFAULT_RULES = {
   misere: false,
   suddenDeath: false,
   repetitionDraw: 3,    // 0 = off
+  // Table (multiplayer)
+  players: 2,           // number of seats (>= 2); everyone starts from `start`
+  direction: 1,         // turn order around the table: +1 clockwise, -1 counter-clockwise
 };
 
 const PRESETS = {
@@ -79,6 +82,9 @@ function makeRules(overrides) {
   }
   if (r.start[0] + r.start[1] === 0) throw new Error("start position has no living hands");
   if (r.fraction < 1) throw new Error("fraction must be at least 1");
+  r.players = r.players | 0;
+  if (r.players < 2) throw new Error("a game needs at least 2 players");
+  r.direction = r.direction < 0 ? -1 : 1;
   return r;
 }
 
@@ -123,25 +129,53 @@ function describeRules(r) {
 // -- game state ----------------------------------------------------------
 
 function newGame(rules, names) {
+  const r = makeRules(rules);
+  const n = r.players;
   const g = {
-    rules: makeRules(rules),
-    names: names ? names.slice() : ["Player 1", "Player 2"],
-    hands: null,
+    rules: r,
+    names: names ? names.slice() : Array.from({ length: n }, (_, i) => `Player ${i + 1}`),
+    hands: Array.from({ length: n }, () => r.start.slice()),
     turn: 0,
-    swapStreak: [0, 0],
-    switchUsed: [false, false],
+    swapStreak: Array(n).fill(0),
+    switchUsed: Array(n).fill(false),
+    eliminated: Array(n).fill(false), // a seat is out once both its hands are dead
     history: new Map(),
     log: [],
     result: null,
-    winner: null, // 0 | 1 | null (null + result = draw)
+    winner: null, // seat index, or null (null + result = draw)
   };
-  g.hands = [g.rules.start.slice(), g.rules.start.slice()];
   record(g);
   return g;
 }
 
 function stateKey(g) {
-  return g.hands[0].join() + "|" + g.hands[1].join() + "|" + g.turn;
+  return g.hands.map((h) => h.join()).join("|") + "|" + g.turn;
+}
+
+/* A seat is out when both hands are dead (or it has been eliminated another
+   way, e.g. sudden death). Works on lightweight states that lack `eliminated`
+   by falling back to the hands. */
+function isOut(g, p) {
+  if (g.eliminated) return g.eliminated[p];
+  return g.hands[p][0] === 0 && g.hands[p][1] === 0;
+}
+
+function livePlayers(g) {
+  const live = [];
+  for (let p = 0; p < g.rules.players; p++) if (!isOut(g, p)) live.push(p);
+  return live;
+}
+
+/* The next seat to move, walking in the table's direction and skipping any
+   seat that is already out. For two players this is just the other seat. */
+function nextTurn(g, from) {
+  const n = g.rules.players, dir = g.rules.direction;
+  let p = from;
+  for (let k = 0; k < n; k++) {
+    p = ((p + dir) % n + n) % n;
+    if (!isOut(g, p)) return p;
+  }
+  return from;
 }
 
 function record(g) {
@@ -170,45 +204,45 @@ function hit(g, target, hitBy) {
 const SIDE = ["L", "R"];
 
 function legalMoves(g) {
-  const r = g.rules, me = g.turn, opp = 1 - me;
+  const r = g.rules, me = g.turn, n = r.players;
   const [a, b] = g.hands[me];
   const moves = [];
   const uf = (v) => fmtFingers(v, r.fraction); // format a unit value as fingers
+  const multi = n > 2; // name the target explicitly when there's more than one opponent
 
-  const mk = (myPair, oppPair) => {
-    const h = [null, null];
-    h[me] = myPair.slice();
-    h[opp] = oppPair.slice();
-    return h;
-  };
+  // Full post-move hands: clone every seat, callers overwrite what changed.
+  const clone = () => g.hands.map((hand) => hand.slice());
 
-  // Attacks
+  // Attacks — against any living opponent's hand.
   for (let i = 0; i < 2; i++) {
     const h = g.hands[me][i];
     if (h === 0) continue;
-    for (let j = 0; j < 2; j++) {
-      const t = g.hands[opp][j];
-      if (t === 0 && !r.deathAttack) continue;
-      const raw = t + h;
-      if (r.cherryBomb && raw === r.base) {
-        const my = [a, b]; my[i] = 1;
-        const op = g.hands[opp].slice(); op[j] = 0;
+    for (let q = 0; q < n; q++) {
+      if (q === me || isOut(g, q)) continue;
+      const theirs = multi ? `${g.names ? g.names[q] : "P" + (q + 1)}'s` : "their";
+      for (let j = 0; j < 2; j++) {
+        const t = g.hands[q][j];
+        if (t === 0 && !r.deathAttack) continue;
+        const raw = t + h;
+        if (r.cherryBomb && raw === r.base) {
+          const H = clone(); H[me][i] = 1; H[q][j] = 0;
+          moves.push({
+            kind: "attack", cherry: true, from: { p: me, h: i }, to: { p: q, h: j },
+            label: `Cherry bomb! ${SIDE[i]}(${uf(h)}) hits ${theirs} ${SIDE[j]}(${uf(t)}) = ${uf(r.base)} — that hand dies, yours resets to 1`,
+            hands: H,
+          });
+          continue;
+        }
+        const nv = hit(g, t, h);
+        const H = clone(); H[q][j] = nv;
+        const tag = nv === 0 ? " (dead)" : (r.rollover && raw > r.base ? " (rollover)" : "");
+        const verb = t === 0 ? "revives" : "hits";
         moves.push({
-          kind: "attack", cherry: true, from: { p: me, h: i }, to: { p: opp, h: j },
-          label: `Cherry bomb! ${SIDE[i]}(${uf(h)}) hits their ${SIDE[j]}(${uf(t)}) = ${uf(r.base)} — their hand dies, yours resets to 1`,
-          hands: mk(my, op),
+          kind: "attack", from: { p: me, h: i }, to: { p: q, h: j },
+          label: `Attack: ${SIDE[i]}(${uf(h)}) ${verb} ${theirs} ${SIDE[j]}(${uf(t)}) → ${uf(nv)}${tag}`,
+          hands: H,
         });
-        continue;
       }
-      const nv = hit(g, t, h);
-      const op = g.hands[opp].slice(); op[j] = nv;
-      const tag = nv === 0 ? " (dead)" : (r.rollover && raw > r.base ? " (rollover)" : "");
-      const verb = t === 0 ? "revives" : "hits";
-      moves.push({
-        kind: "attack", from: { p: me, h: i }, to: { p: opp, h: j },
-        label: `Attack: ${SIDE[i]}(${uf(h)}) ${verb} their ${SIDE[j]}(${uf(t)}) → ${uf(nv)}${tag}`,
-        hands: mk([a, b], op),
-      });
     }
   }
 
@@ -218,11 +252,11 @@ function legalMoves(g) {
       const h = g.hands[me][i], t = g.hands[me][j];
       if (h === 0 || t === 0) continue;
       const nv = hit(g, t, h);
-      const my = [a, b]; my[j] = nv;
+      const H = clone(); H[me][j] = nv;
       moves.push({
         kind: "selfattack", from: { p: me, h: i }, to: { p: me, h: j },
         label: `Self-attack: ${SIDE[i]}(${uf(h)}) hits own ${SIDE[j]}(${uf(t)}) → ${uf(nv)}${nv === 0 ? " (dead)" : ""}`,
-        hands: mk(my, g.hands[opp]),
+        hands: H,
       });
     }
   }
@@ -233,11 +267,11 @@ function legalMoves(g) {
       const h = g.hands[me][i];
       if (h === 0) continue;
       const nv = hit(g, h, 1);
-      const my = [a, b]; my[i] = nv;
+      const H = clone(); H[me][i] = nv;
       moves.push({
         kind: "add", to: { p: me, h: i },
         label: `Add 1 finger to ${SIDE[i]}(${uf(h)}) → ${uf(nv)}${nv === 0 ? " (dead)" : ""}`,
-        hands: mk(my, g.hands[opp]),
+        hands: H,
       });
     }
   }
@@ -248,11 +282,11 @@ function legalMoves(g) {
       const h = g.hands[me][i];
       if (h === 0) continue;
       const nv = r.rollover ? (((-h) % r.base) + r.base) % r.base : -h;
-      const my = [a, b]; my[i] = nv;
+      const H = clone(); H[me][i] = nv;
       moves.push({
         kind: "flip", to: { p: me, h: i },
         label: `Flip ${SIDE[i]}(${uf(h)}) → ${uf(nv)}`,
-        hands: mk(my, g.hands[opp]),
+        hands: H,
       });
     }
   }
@@ -266,10 +300,11 @@ function legalMoves(g) {
       if (d < 0 || d >= r.base) continue;
       const kind = splitKind(g, a, b, c, d);
       if (!kind) continue;
+      const H = clone(); H[me] = [c, d];
       moves.push({
         kind: "split", splitName: kind,
         label: `${kind}: ${uf(a)}-${uf(b)} → ${uf(c)}-${uf(d)}`,
-        hands: mk([c, d], g.hands[opp]),
+        hands: H,
         isSwap: kind === "Swap",
         usesSwitch: kind === "One-point switch",
       });
@@ -283,10 +318,11 @@ function legalMoves(g) {
       const d = rem - c;
       if (d < 0 || d >= r.base) continue;
       if ((c === 0 || d === 0) && !r.suicide) continue;
+      const H = clone(); H[me] = [c, d];
       moves.push({
         kind: "meta",
         label: `Meta: combine ${uf(a)}-${uf(b)} (${uf(tot)}), subtract ${uf(r.base)} → ${uf(c)}-${uf(d)}`,
-        hands: mk([c, d], g.hands[opp]),
+        hands: H,
       });
     }
   }
@@ -321,44 +357,86 @@ function splitKind(g, a, b, c, d) {
 // -- applying moves ------------------------------------------------------
 
 function applyMove(g, move) {
-  const me = g.turn;
+  const r = g.rules, me = g.turn;
   g.log.push({ player: me, label: move.label });
-  g.hands = [move.hands[0].slice(), move.hands[1].slice()];
+  g.hands = move.hands.map((h) => h.slice());
   g.swapStreak[me] = move.isSwap ? g.swapStreak[me] + 1 : 0;
   if (move.usesSwitch) g.switchUsed[me] = true;
-  g.turn = 1 - g.turn;
-  checkEnd(g);
-}
 
-function checkEnd(g) {
-  const r = g.rules;
-  for (let p = 0; p < 2; p++) {
-    const bothOut = g.hands[p][0] === 0 && g.hands[p][1] === 0;
-    const t = total(g, p);
-    if (bothOut || (r.suddenDeath && t === 1)) {
-      const winner = r.misere ? p : 1 - p;
-      const how = bothOut ? "lost both hands" : "is down to 1 finger";
-      const verb = r.misere ? "wins" : "loses";
-      g.winner = winner;
-      g.result = `${g.names[p]} ${how} — and ${verb}! ${g.names[winner]} is the winner.`;
-      return;
-    }
+  // Knock out any newly-dead seats *before* passing the turn, so the hand-off
+  // skips a seat this move just eliminated.
+  const newly = markEliminations(g);
+
+  // Misère: the goal is to be knocked out, so the first seat to fall wins.
+  if (r.misere && newly.length) {
+    const w = newly[0].p;
+    const how = newly[0].bothOut ? "lost both hands" : "is down to 1 finger";
+    return win(g, w, `${g.names[w]} ${how} first — and wins the misère game!`);
   }
+
+  // Normal: last seat standing takes it.
+  let live = livePlayers(g);
+  if (live.length <= 1) {
+    if (!live.length) { g.result = "Everyone is out at once — a draw."; g.winner = null; return; }
+    let how;
+    if (newly.length === 1)
+      how = `${g.names[newly[0].p]} ${newly[0].bothOut ? "lost both hands" : "is down to 1 finger"}`;
+    else if (newly.length > 1)
+      how = `${newly.map((x) => g.names[x.p]).join(" & ")} are out`;
+    else
+      how = `${g.names[live[0]]} is the only one left`;
+    return win(g, live[0], how + " —");
+  }
+
+  g.turn = nextTurn(g, me);
+
   if (r.repetitionDraw && record(g) >= r.repetitionDraw) {
     g.result = `Draw by ${r.repetitionDraw}-fold repetition.`;
     return;
   }
+
+  // The seat to move can't: it's stuck. In misère that's a win; otherwise the
+  // seat drops out and play carries on (in a 2-player game that ends it).
   if (legalMoves(g).length === 0) {
     const stuck = g.turn;
-    const winner = r.misere ? stuck : 1 - stuck;
-    g.winner = winner;
-    g.result = `${g.names[stuck]} has no legal moves — ${g.names[winner]} is the winner.`;
+    if (r.misere)
+      return win(g, stuck, `${g.names[stuck]} has no legal moves — and wins the misère game!`);
+    g.eliminated[stuck] = true;
+    live = livePlayers(g);
+    if (live.length <= 1) {
+      const w = live.length ? live[0] : null;
+      g.winner = w;
+      g.result = `${g.names[stuck]} has no legal moves — ${w != null ? g.names[w] : "nobody"} is the winner.`;
+      return;
+    }
+    g.turn = nextTurn(g, stuck);
   }
+}
+
+/* Record a decided game. `lead` is the "why" clause; the winner sentence is
+   appended after " — " so the UI can split the reason from the verdict. */
+function win(g, w, lead) {
+  g.winner = w;
+  g.result = `${lead} ${g.names[w]} is the winner.`;
+}
+
+/* Newly-dead seats at the current position: mark them out and report how they
+   fell (for the result text). */
+function markEliminations(g) {
+  const r = g.rules, newly = [];
+  for (let p = 0; p < r.players; p++) {
+    if (g.eliminated[p]) continue;
+    const bothOut = g.hands[p][0] === 0 && g.hands[p][1] === 0;
+    const sudden = r.suddenDeath && total(g, p) === 1;
+    if (bothOut || sudden) { g.eliminated[p] = true; newly.push({ p, bothOut }); }
+  }
+  return newly;
 }
 
 const Chopsticks = {
   DEFAULT_RULES, PRESETS,
   makeRules, describeRules, newGame, legalMoves, applyMove, stateKey,
+  nextTurn, livePlayers, isOut,
 };
 
 export default Chopsticks;

@@ -28,7 +28,7 @@
               @click="g.toggleTheme">{{ g.themeIcon }}</button>
       <button id="navSetup" class="play-only" @click="g.openSetup">☰ Main menu</button>
       <button id="undoBtn" class="play-only" :disabled="g.undoDisabled" @click="g.undo">↺ Undo</button>
-      <button id="cheatBtn" class="play-only" :class="{ active: g.cheat }"
+      <button id="cheatBtn" class="play-only" v-show="g.cheatAvailable" :class="{ active: g.cheat }"
               title="Cheat: reveal the optimal move" :aria-pressed="g.cheat ? 'true' : 'false'"
               @click="g.toggleCheat">👁 Cheat</button>
       <button id="newGameBtn" class="primary play-only" @click="g.startGame">New game</button>
@@ -44,25 +44,35 @@
 
         <div class="mode-row">
           <button class="mode-btn" :class="{ active: g.currentMode === 'single' }" @click="g.setMode('single')">🤖 Single player</button>
-          <button class="mode-btn" :class="{ active: g.currentMode === 'two' }" @click="g.setMode('two')">👥 Two players</button>
+          <button class="mode-btn" :class="{ active: g.currentMode === 'two' }" @click="g.setMode('two')">{{ g.playersCount === 2 ? '👥 Two players' : '👥 All humans' }}</button>
           <button class="mode-btn" :class="{ active: g.currentMode === 'watch' }" @click="g.setMode('watch')">🤖👀 Watch CPUs</button>
+        </div>
+
+        <div class="fgroup">Table</div>
+        <div class="mode-row">
+          <button v-for="n in [2, 3, 4]" :key="n" class="mode-btn"
+                  :class="{ active: g.playersCount === n }" @click="g.setPlayers(n)">{{ n }} players</button>
+        </div>
+        <div class="mode-row" v-show="g.playersCount > 2">
+          <button class="mode-btn" :class="{ active: g.direction === 'cw' }" @click="g.setDirection('cw')">⟳ Clockwise</button>
+          <button class="mode-btn" :class="{ active: g.direction === 'ccw' }" @click="g.setDirection('ccw')">⟲ Counter-clockwise</button>
         </div>
 
         <div class="fgroup">Players</div>
         <!-- PlayerRow.vue, once per player -->
-        <div class="prow" v-for="p in [0, 1]" :key="p">
-          <span class="dot" :class="'d' + p"></span>
-          <input type="text" maxlength="16" :placeholder="g.namePlaceholder(p)"
-                 :style="{ visibility: g.controllers[p] === 'remote' ? 'hidden' : '' }"
-                 v-model="g.names[p]">
-          <select :style="{ flex: g.controllers[p] === 'remote' ? 'none' : '1' }"
-                  v-model="g.controllers[p]" @change="g.ctrlChanged(p)">
+        <div class="prow" v-for="p in g.playersCount" :key="p">
+          <span class="dot" :class="'d' + (p - 1)"></span>
+          <input type="text" maxlength="16" :placeholder="g.namePlaceholder(p - 1)"
+                 :style="{ visibility: g.controllers[p - 1] === 'remote' ? 'hidden' : '' }"
+                 v-model="g.names[p - 1]">
+          <select :style="{ flex: g.controllers[p - 1] === 'remote' ? 'none' : '1' }"
+                  v-model="g.controllers[p - 1]" @change="g.ctrlChanged(p - 1)">
             <option value="human">Human</option>
-            <option v-for="c in g.cpuNames" :key="c" :value="c">{{ 'CPU: ' + c }}</option>
+            <option v-for="c in g.cpuOptions" :key="c" :value="c">{{ 'CPU: ' + c }}</option>
           </select>
           <input type="number" class="port" min="1" max="65535" placeholder="port"
-                 title="Remote engine port on localhost" v-show="g.controllers[p] === 'remote'"
-                 :value="g.remotePorts[p]" @change="g.setPort(p, $event.target.value)">
+                 title="Remote engine port on localhost" v-show="g.controllers[p - 1] === 'remote'"
+                 :value="g.remotePorts[p - 1]" @change="g.setPort(p - 1, $event.target.value)">
         </div>
         <span class="note" v-show="g.anyRemote">“CPU: remote” connects to an engine process at localhost:&lt;port&gt;.</span>
 
@@ -122,27 +132,44 @@
           </div>
         </div>
         <div id="watchbar" :class="{ show: g.watchLive }">
-          <span class="wlabel">CPU vs CPU:</span>
+          <span class="wlabel">CPUs:</span>
           <button @click="g.toggleAuto">{{ g.autoToggleText }}</button>
           <button v-show="g.showStep" :disabled="g.stepDisabled" @click="g.stepCPU">Step →</button>
         </div>
-        <div class="player-row">
-          <div class="name-tag p1" :class="{ active: g.activeP === 1 }"><span class="dot"></span><span class="nm">{{ g.labelTop }}</span></div>
-          <div class="hands">
-            <!-- opponent faces you: their right hand is on your left -->
-            <div class="hand" :class="g.handMods(1, 1)" v-html="g.handHtml(1, 1)" @click="g.onHandClick(1, 1)"></div>
-            <div class="hand" :class="g.handMods(1, 0)" v-html="g.handHtml(1, 0)" @click="g.onHandClick(1, 0)"></div>
+
+        <!-- 3+ players: a round "table" so turn direction reads visually. -->
+        <div v-if="g.seatCount > 2" class="arena" :class="'seats-' + g.seatCount">
+          <div class="dir-glyph" aria-hidden="true">{{ g.directionGlyph }}</div>
+          <div class="seat" v-for="p in g.allSeats" :key="p" :style="g.seatStyle(p)"
+               :class="{ active: g.seatActive(p), out: g.seatOut(p) }">
+            <div class="hands">
+              <div class="hand" v-for="h in g.handSides(p)" :key="h" :class="g.handMods(p, h)" v-html="g.handHtml(p, h)" @click="g.onHandClick(p, h)"></div>
+            </div>
+            <div class="name-tag" :style="g.seatLabelStyle(p)" :class="['p' + p, { active: g.seatActive(p), out: g.seatOut(p) }]"><span class="dot"></span><span class="nm">{{ g.seatLabel(p) }}</span></div>
           </div>
         </div>
+
+        <!-- 2 players: the classic face-to-face layout, you at the bottom. -->
+        <template v-else>
+          <div class="player-row">
+            <div class="name-tag p1" :class="{ active: g.seatActive(1), out: g.seatOut(1) }"><span class="dot"></span><span class="nm">{{ g.seatLabel(1) }}</span></div>
+            <div class="hands">
+              <div class="hand" v-for="h in g.handSides(1)" :key="h" :class="g.handMods(1, h)" v-html="g.handHtml(1, h)" @click="g.onHandClick(1, h)"></div>
+            </div>
+          </div>
+        </template>
+
         <div id="hint">{{ g.hintText }}</div>
         <div id="cheat" :class="{ on: g.cheatUI.on }" aria-live="polite">{{ g.cheatUI.text }}</div>
-        <div class="player-row">
+
+        <!-- Your own seat (seat 0) sits at the bottom in both layouts. -->
+        <div v-if="g.seatCount <= 2" class="player-row">
           <div class="hands">
-            <div class="hand" :class="g.handMods(0, 0)" v-html="g.handHtml(0, 0)" @click="g.onHandClick(0, 0)"></div>
-            <div class="hand" :class="g.handMods(0, 1)" v-html="g.handHtml(0, 1)" @click="g.onHandClick(0, 1)"></div>
+            <div class="hand" v-for="h in g.handSides(0)" :key="h" :class="g.handMods(0, h)" v-html="g.handHtml(0, h)" @click="g.onHandClick(0, h)"></div>
           </div>
-          <div class="name-tag p0" :class="{ active: g.activeP === 0 }"><span class="dot"></span><span class="nm">{{ g.labelBottom }}</span></div>
+          <div class="name-tag p0" :class="{ active: g.seatActive(0), out: g.seatOut(0) }"><span class="dot"></span><span class="nm">{{ g.seatLabel(0) }}</span></div>
         </div>
+
         <div id="movebar">
           <button v-for="(b, i) in g.play.buttons" :key="i" :class="{ primary: b.primary }"
                   :disabled="b.disabled" @click="b.action()">{{ b.text }}</button>

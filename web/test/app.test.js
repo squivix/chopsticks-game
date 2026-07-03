@@ -12,9 +12,12 @@ describe("App — top-level rendering", () => {
     const wrapper = mount(App);
     expect(wrapper.text()).toContain("Chopsticks");
     expect(wrapper.find("#setup").classes()).toContain("active");
-    expect(wrapper.findAll(".mode-btn")).toHaveLength(3);
+    const modeLabels = wrapper.findAll(".mode-btn").map((b) => b.text());
+    expect(modeLabels).toContain("🤖 Single player");
+    expect(modeLabels).toContain("🤖👀 Watch CPUs");
+    expect(modeLabels.some((t) => t.includes("players"))).toBe(true); // seat-count buttons
     expect(wrapper.find("#play").exists()).toBe(false); // no game yet
-    expect(wrapper.findAll(".prow")).toHaveLength(2);   // two player rows
+    expect(wrapper.findAll(".prow")).toHaveLength(2);   // two seats by default
   });
 
   it("Start game reveals the board with four hands and the log", async () => {

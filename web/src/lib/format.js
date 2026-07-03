@@ -2,9 +2,9 @@
 
 export const SIDEWORD = ["left", "right"];
 
-// The top player (p===1) is drawn mirrored — hand index 1 sits on the viewer's
-// left — so name a hand's side by its on-screen position for that owner.
-export const sideWord = (p, h) => SIDEWORD[p === 1 ? 1 - h : h];
+// Opponents (any seat other than your seat 0) are drawn flipped — hand index 1
+// sits on the viewer's left — so name a hand's side by its on-screen position.
+export const sideWord = (p, h) => SIDEWORD[p !== 0 ? 1 - h : h];
 
 export const fmtFingers = (v, fraction) =>
   (!fraction || fraction === 1) ? String(v) : String(Math.round((v / fraction) * 100) / 100);

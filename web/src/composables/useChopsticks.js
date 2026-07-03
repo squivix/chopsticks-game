@@ -42,6 +42,9 @@ function createStore() {
   const currentOverrides = ref(
     JSON.parse(localStorage.getItem("chopsticks.rules") || "null")
     || Object.assign({}, C.PRESETS[currentPreset.value] ? C.PRESETS[currentPreset.value][1] : {}));
+  const MIN_PLAYERS = 2, MAX_PLAYERS = 4, DEFAULT_PORT = 8765;
+  const playersCount = ref(clampPlayers(parseInt(localStorage.getItem("chopsticks.players") || "2", 10)));
+  const direction = ref(localStorage.getItem("chopsticks.direction") === "ccw" ? "ccw" : "cw");
   const names = ref(JSON.parse(localStorage.getItem("chopsticks.names") || '["",""]'));
   const controllers = ref(
     JSON.parse(localStorage.getItem("chopsticks.controllers") || '["human","human"]')
@@ -50,6 +53,16 @@ function createStore() {
   const remotePorts = ref(
     JSON.parse(localStorage.getItem("chopsticks.remotePorts") || "null")
     || ChopsticksCPU.config.ports.slice());
+  // Keep every per-seat array the same length as the seat count.
+  function clampPlayers(n) { return Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, (n | 0) || 2)); }
+  function fitSeats(arr, n, pad) { const a = arr.slice(0, n); while (a.length < n) a.push(pad); return a; }
+  function reconcileSeats(n) {
+    names.value = fitSeats(names.value, n, "");
+    controllers.value = fitSeats(controllers.value, n, "human");
+    remotePorts.value = fitSeats(remotePorts.value, n, DEFAULT_PORT);
+  }
+  reconcileSeats(playersCount.value);
+  sanitizeControllers();
   ChopsticksCPU.config.ports = remotePorts.value.slice();
 
   const watchStep = ref(localStorage.getItem("chopsticks.watchStep") === "1");
@@ -92,10 +105,10 @@ function createStore() {
 
   function describeMove(m) {
     const g = game.value, me = g.turn;
-    const opName = playerLabel(1 - me);
     const base = g.rules.base;
     const F = (v) => fmtFingers(v, g.rules.fraction);
     if (m.kind === "attack") {
+      const opName = playerLabel(m.to.p);
       const sideT = sideWord(m.to.p, m.to.h);
       const using = `with the ${sideWord(m.from.p, m.from.h)} hand`;
       const h = g.hands[m.from.p][m.from.h];
@@ -142,13 +155,13 @@ function createStore() {
     if (g.winner == null) return g.result; // draw
     const w = g.winner;
     const humans = controllers.value.filter((c) => c === "human").length;
-    if (humans === 2) return `${g.names[w]} wins!`;
+    // With a single human at the table it's personal; otherwise name the winner.
     if (humans === 1) return controllers.value[w] === "human" ? "You win!" : "You lose!";
     return `${playerLabel(w)} wins!`;
   }
 
   function isWatch() {
-    return controllers.value[0] !== "human" && controllers.value[1] !== "human";
+    return controllers.value.every((c) => c !== "human");
   }
   function rearrangeMatch(moves) {
     const g = game.value, ra = rearrange.value;
@@ -179,10 +192,14 @@ function createStore() {
     const v = (rearrange.value && p === me) ? rearrange.value[h] : g.hands[p][h];
     const fr = g.rules.fraction || 1;
     const dead = v === 0;
+    // In the polygon layout each seat is an identical unit rotated into place
+    // (see seatStyle), so it isn't mirrored to "face you" the way the 2-player
+    // opponent is — the rotation already turns it toward the centre.
+    const flip = seatCount.value > 2 ? false : p !== 0;
     return handSVG(Math.abs(v) / fr, Object.assign({
-      dead, mirror: h === 1, flip: p === 1, negative: v < 0,
+      dead, mirror: h === 1, flip, negative: v < 0,
       label: dead ? "" : fmtFingers(v, fr).replace("-", "−"),
-    }, SKINS[p]));
+    }, SKINS[p % SKINS.length]));
   }
 
   function handMods(p, h) {
@@ -205,8 +222,50 @@ function createStore() {
 
   const activeP = computed(() =>
     (game.value && !game.value.result) ? game.value.turn : -1);
-  const labelTop = computed(() => game.value ? playerLabel(1) : "");
-  const labelBottom = computed(() => game.value ? playerLabel(0) : "");
+  // Board seating: you are seat 0 at the bottom; opponents stack above you,
+  // drawn from the far seat down to the one that plays right after you.
+  const opponentSeats = computed(() => {
+    const n = game.value ? game.value.rules.players : playersCount.value;
+    const seats = [];
+    for (let p = n - 1; p >= 1; p--) seats.push(p);
+    return seats;
+  });
+  // In the 2-player layout opponents face you, so their hands read right-to-left
+  // and yours read left-to-right. Around the polygon every seat is identical and
+  // rotated into place, so they all read the same way.
+  function handSides(p) {
+    if (seatCount.value > 2) return [0, 1];
+    return p === 0 ? [0, 1] : [1, 0];
+  }
+  function seatLabel(p) { return game.value ? playerLabel(p) : ""; }
+  function seatActive(p) { return activeP.value === p; }
+  function seatOut(p) { return !!(game.value && game.value.eliminated && game.value.eliminated[p]); }
+
+  // With 3+ players the board becomes a polygon so turn direction reads
+  // visually: seat 0 sits at the bottom and seats are spaced clockwise by
+  // index, so play sweeps clockwise (or the other way for CCW).
+  const seatCount = computed(() => game.value ? game.value.rules.players : playersCount.value);
+  const allSeats = computed(() => Array.from({ length: seatCount.value }, (_, i) => i));
+  const directionGlyph = computed(() => {
+    const d = game.value ? game.value.rules.direction : (direction.value === "ccw" ? -1 : 1);
+    return d < 0 ? "↺" : "↻";
+  });
+  // Each seat is turned to face the centre, like players sitting around a table:
+  // seat 0 stays upright at the bottom (that's your view), and each later seat is
+  // rotated clockwise by its share of the circle so its hands point inward.
+  function seatRotation(p) { return p * 360 / seatCount.value; }
+  function seatStyle(p) {
+    const n = seatCount.value;
+    const theta = p * 2 * Math.PI / n; // 0 at the bottom, increasing clockwise
+    const rx = 33, ry = 36; // % radii; slightly narrower horizontally to fit wide seats
+    return {
+      left: `${50 - rx * Math.sin(theta)}%`,
+      top: `${50 + ry * Math.cos(theta)}%`,
+      transform: `translate(-50%, -50%) rotate(${seatRotation(p)}deg)`,
+    };
+  }
+  // The seat is rotated, so counter-rotate its name pill to keep the text level.
+  function seatLabelStyle(p) { return { transform: `rotate(${-seatRotation(p)}deg)` }; }
 
   /* Hint line + move buttons, built together (the "use the buttons below" hint
      depends on whether any buttons exist). */
@@ -305,9 +364,12 @@ function createStore() {
 
   /* Cheat mode: reveal the optimal move for the human to move. Uses the solver's
      own choice with a fixed selector so the hint is stable across re-renders. */
+  // The optimal-play solver is a two-player minimax, so the cheat hint is only
+  // offered at a two-seat table.
+  const cheatAvailable = computed(() => !game.value || game.value.rules.players <= 2);
   const cheatUI = computed(() => {
     const g = game.value, me = g && g.turn;
-    const on = cheat.value && g && !g.result && controllers.value[me] === "human";
+    const on = cheat.value && g && !g.result && g.rules.players <= 2 && controllers.value[me] === "human";
     if (!on) return { on: false, text: "" };
     const moves = legal.value;
     if (!moves.length) return { on: true, text: "" };
@@ -334,8 +396,15 @@ function createStore() {
   const showStep = computed(() => watchLive.value && watchStep.value);
   const stepDisabled = computed(() => !!(game.value && controllers.value[game.value.turn] === "human"));
 
-  const rulesLine = computed(() =>
-    game.value ? `${currentPreset.value} — ${C.describeRules(game.value.rules)}` : "");
+  const rulesLine = computed(() => {
+    const g = game.value;
+    if (!g) return "";
+    const r = g.rules;
+    const table = r.players > 2
+      ? `${r.players} players, ${r.direction < 0 ? "counter-clockwise" : "clockwise"} — `
+      : "";
+    return `${currentPreset.value} — ${table}${C.describeRules(r)}`;
+  });
 
   const undoDisabled = computed(() => undoStack.value.length === 0);
   const themeIcon = computed(() => theme.value === "dark" ? "☀️" : "🌙");
@@ -343,12 +412,16 @@ function createStore() {
 
   /* ---------------- setup-screen derived ---------------- */
   const currentMode = computed(() => {
-    const [a, b] = controllers.value;
-    if (a === "human" && b === "human") return "two";
-    if (a === "human" && b !== "human") return "single";
-    if (a !== "human" && b !== "human") return "watch";
-    return null; // CPU vs human — no named mode, still valid
+    const c = controllers.value;
+    const humans = c.filter((x) => x === "human").length;
+    if (humans === c.length) return "two";       // everyone human
+    if (humans === 0) return "watch";             // everyone a CPU
+    if (humans === 1 && c[0] === "human") return "single"; // you vs the CPUs
+    return null; // a mix — no named mode, still valid
   });
+  // Perfect play (optimal) is 2-player only; drop it from the menu with 3+ seats.
+  const cpuOptions = computed(() =>
+    playersCount.value > 2 ? cpuNames.filter((c) => c !== "optimal") : cpuNames);
   const customPresetNames = computed(() => Object.keys(customPresets.value));
   const namePlaceholder = (p) =>
     controllers.value[p] === "human" ? `Player ${p + 1}` : `CPU ${p + 1} (${controllers.value[p]})`;
@@ -359,7 +432,8 @@ function createStore() {
     const g = game.value;
     return JSON.stringify({
       hands: g.hands, turn: g.turn, swapStreak: g.swapStreak,
-      switchUsed: g.switchUsed, history: [...g.history], log: g.log,
+      switchUsed: g.switchUsed, eliminated: g.eliminated,
+      history: [...g.history], log: g.log,
       result: g.result, winner: g.winner,
     });
   }
@@ -375,7 +449,7 @@ function createStore() {
     cpuError.value = "";
     undoStack.value.push(snapshot());
     const g = game.value;
-    const before = [g.hands[0].slice(), g.hands[1].slice()];
+    const before = g.hands.map((h) => h.slice());
     const friendly = describeMove(move);
     C.applyMove(g, move);
     g.log[g.log.length - 1].label = friendly;
@@ -384,7 +458,7 @@ function createStore() {
     triggerRef(game);
     maybeScheduleCPU();
     const changed = [];
-    for (let p = 0; p < 2; p++)
+    for (let p = 0; p < g.hands.length; p++)
       for (let h = 0; h < 2; h++)
         if (g.hands[p][h] !== before[p][h]) changed.push(`${p}-${h}`);
     if (changed.length) {
@@ -524,13 +598,36 @@ function createStore() {
   // A CPU uses the CPU(strategy) default, so clear any stale name in its field.
   function clearNameIfCPU(p) { if (controllers.value[p] !== "human") names.value[p] = ""; }
   function ctrlChanged(p) { clearNameIfCPU(p); persistControllers(); }
+  // Optimal is 2-player only; swap it out of any seat once the table grows.
+  function sanitizeControllers() {
+    if (playersCount.value <= 2) return;
+    const fallback = cpuNames.find((c) => c !== "optimal") || "human";
+    controllers.value = controllers.value.map((c) => (c === "optimal" ? fallback : c));
+  }
   function setMode(mode) {
-    const cpu = cpuNames[0] || "human";
-    if (mode === "single") controllers.value = ["human", cpu];
-    else if (mode === "two") controllers.value = ["human", "human"];
-    else controllers.value = [cpu, cpu];
-    for (const p of [0, 1]) clearNameIfCPU(p);
+    const cpu = cpuOptions.value[0] || "human";
+    const n = playersCount.value;
+    if (mode === "single") controllers.value = Array.from({ length: n }, (_, i) => i === 0 ? "human" : cpu);
+    else if (mode === "two") controllers.value = Array(n).fill("human");
+    else controllers.value = Array(n).fill(cpu);
+    for (let p = 0; p < n; p++) clearNameIfCPU(p);
     persistControllers();
+  }
+  function persistPlayers() {
+    localStorage.setItem("chopsticks.players", String(playersCount.value));
+    localStorage.setItem("chopsticks.direction", direction.value);
+  }
+  function setPlayers(n) {
+    playersCount.value = clampPlayers(n);
+    reconcileSeats(playersCount.value);
+    sanitizeControllers();
+    applyRemotePorts();
+    persistControllers();
+    persistPlayers();
+  }
+  function setDirection(d) {
+    direction.value = d === "ccw" ? "ccw" : "cw";
+    persistPlayers();
   }
   function applyRemotePorts() {
     ChopsticksCPU.config.ports = remotePorts.value.slice();
@@ -557,34 +654,48 @@ function createStore() {
     readPortInputs();
     startGame();
   }
+  // Fold the table settings (seat count + turn direction) into a ruleset. Kept
+  // separate from the rule presets so switching preset never resets the table.
+  function tableRules(extra) {
+    return Object.assign({}, extra, {
+      players: playersCount.value,
+      direction: direction.value === "ccw" ? -1 : 1,
+    });
+  }
   function startGame() {
     const display = resolveNames();
     try {
-      game.value = markRaw(C.newGame(currentOverrides.value, display));
+      game.value = markRaw(C.newGame(tableRules(currentOverrides.value), display));
     } catch (e) {
       alert("Invalid rules: " + e.message);
       currentPreset.value = "standard"; currentOverrides.value = {};
-      game.value = markRaw(C.newGame({}, display));
+      game.value = markRaw(C.newGame(tableRules({}), display));
     }
     selected.value = null;
     rearrange.value = null;
     undoStack.value = [];
     cpuError.value = "";
-    ChopsticksCPU.config.reportedNames = [null, null]; // re-learned from the engine per game
+    // re-learned from the engine per game, one slot per seat
+    ChopsticksCPU.config.reportedNames = Array(playersCount.value).fill(null);
     localStorage.setItem("chopsticks.preset", currentPreset.value);
     localStorage.setItem("chopsticks.rules", JSON.stringify(currentOverrides.value));
     localStorage.setItem("chopsticks.names", JSON.stringify(names.value));
     localStorage.setItem("chopsticks.controllers", JSON.stringify(controllers.value));
+    persistPlayers();
     view.value = "play";
     maybeScheduleCPU();
   }
   function reset() {
-    for (const k of ["preset", "rules", "names", "controllers"])
+    for (const k of ["preset", "rules", "names", "controllers", "players", "direction"])
       localStorage.removeItem("chopsticks." + k);
     currentPreset.value = "standard";
     currentOverrides.value = Object.assign({}, C.PRESETS.standard ? C.PRESETS.standard[1] : {});
+    playersCount.value = 2;
+    direction.value = "cw";
     names.value = ["", ""];
     controllers.value = ["human", "human"];
+    remotePorts.value = [DEFAULT_PORT, DEFAULT_PORT];
+    ChopsticksCPU.config.ports = remotePorts.value.slice();
     openSetup();
   }
   function undo() {
@@ -628,15 +739,19 @@ function createStore() {
     // state
     view, theme, currentPreset, currentOverrides, names, controllers, customPresets,
     remotePorts, watchStep, cheat, game, selected, rearrange, presetName, fv,
+    playersCount, direction,
     // static
     RULE_FIELDS, cpuNames, builtinPresets,
     // derived
-    hintText, cheatUI, play, logEntries, outcome, showResult, verdict, reason,
+    hintText, cheatUI, cheatAvailable, play, logEntries, outcome, showResult, verdict, reason,
     watchLive, autoToggleText, showStep, stepDisabled, rulesLine, undoDisabled,
-    themeIcon, anyRemote, currentMode, customPresetNames, activeP, labelTop, labelBottom,
+    themeIcon, anyRemote, currentMode, cpuOptions, customPresetNames, activeP,
+    opponentSeats, handSides, seatLabel, seatActive, seatOut,
+    seatCount, allSeats, directionGlyph, seatStyle, seatLabelStyle,
     // methods
     handHtml, handMods, onHandClick, namePlaceholder, presetTitle, presetChanged,
     markCustom, savePreset, deletePreset, ctrlChanged, setMode, setPort,
+    setPlayers, setDirection,
     openSetup, start, startGame, reset, undo, stepCPU,
     toggleTheme, toggleCheat, toggleAuto,
     // exposed for unit tests

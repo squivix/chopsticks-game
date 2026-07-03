@@ -41,4 +41,6 @@ export function handSVG(fingers, { dead, mirror, flip, skin, skinDark, label, ne
 export const SKINS = [
   { skin: "var(--skin1)", skinDark: "var(--skin1-dark)" },
   { skin: "var(--skin2)", skinDark: "var(--skin2-dark)" },
+  { skin: "var(--skin3)", skinDark: "var(--skin3-dark)" },
+  { skin: "var(--skin4)", skinDark: "var(--skin4-dark)" },
 ];

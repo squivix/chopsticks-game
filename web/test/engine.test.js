@@ -58,6 +58,55 @@ describe("engine — a full random game terminates", () => {
   });
 });
 
+describe("engine — three or more players", () => {
+  it("starts every seat at 1&1 with seat 0 to move", () => {
+    const g = C.newGame({ players: 3 }, ["A", "B", "C"]);
+    expect(g.hands).toEqual([[1, 1], [1, 1], [1, 1]]);
+    expect(g.eliminated).toEqual([false, false, false]);
+    expect(g.turn).toBe(0);
+  });
+
+  it("offers attacks against both opponents (2 hands × 2 opponents × 2 targets)", () => {
+    const g = C.newGame({ players: 3 }, ["A", "B", "C"]);
+    const attacks = C.legalMoves(g).filter((m) => m.kind === "attack");
+    expect(attacks).toHaveLength(8);
+    expect(new Set(attacks.map((m) => m.to.p))).toEqual(new Set([1, 2]));
+  });
+
+  it("passes the turn clockwise, and counter-clockwise the other way", () => {
+    const cw = C.newGame({ players: 3, direction: 1 }, ["A", "B", "C"]);
+    C.applyMove(cw, C.legalMoves(cw)[0]);
+    expect(cw.turn).toBe(1);
+    const ccw = C.newGame({ players: 3, direction: -1 }, ["A", "B", "C"]);
+    C.applyMove(ccw, C.legalMoves(ccw)[0]);
+    expect(ccw.turn).toBe(2);
+  });
+
+  it("skips an eliminated seat in the turn order and ends on the last standing", () => {
+    const g = C.newGame({ players: 3 }, ["A", "B", "C"]);
+    g.hands = [[1, 1], [0, 0], [1, 1]]; // B is already out
+    g.eliminated = [false, true, false];
+    g.turn = 0;
+    C.applyMove(g, C.legalMoves(g)[0]); // A moves → turn should skip B to C
+    expect(g.turn).toBe(2);
+    expect(g.result).toBeFalsy();
+  });
+
+  it("keeps going after one seat falls until a single winner remains", () => {
+    const g = C.newGame({ players: 3 }, ["A", "B", "C"]);
+    // A knocks out C's last living hand; B is still in, so the game continues.
+    g.hands = [[1, 0], [1, 1], [0, 4]];
+    g.turn = 0;
+    const kill = C.legalMoves(g).find(
+      (m) => m.kind === "attack" && m.to.p === 2 && m.hands[2][0] === 0 && m.hands[2][1] === 0);
+    expect(kill).toBeTruthy();
+    C.applyMove(g, kill);
+    expect(g.eliminated[2]).toBe(true);
+    expect(g.result).toBeFalsy(); // A and B remain
+    expect(g.turn).toBe(1);       // C is skipped
+  });
+});
+
 describe("engine — rules & presets", () => {
   it("describeRules returns a non-empty human string", () => {
     const g = C.newGame({}, ["A", "B"]);

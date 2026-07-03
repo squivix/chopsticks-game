@@ -13,7 +13,7 @@ const g = useGame();
     <select :style="{ flex: g.controllers[p] === 'remote' ? 'none' : '1' }"
             v-model="g.controllers[p]" @change="g.ctrlChanged(p)">
       <option value="human">Human</option>
-      <option v-for="c in g.cpuNames" :key="c" :value="c">{{ 'CPU: ' + c }}</option>
+      <option v-for="c in g.cpuOptions" :key="c" :value="c">{{ 'CPU: ' + c }}</option>
     </select>
     <input type="number" class="port" min="1" max="65535" placeholder="port"
            title="Remote engine port on localhost" v-show="g.controllers[p] === 'remote'"

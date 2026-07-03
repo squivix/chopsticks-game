@@ -28,13 +28,13 @@ function successorState(g, move) {
   swapStreak[me] = move.isSwap ? swapStreak[me] + 1 : 0;
   const switchUsed = g.switchUsed.slice();
   if (move.usesSwitch) switchUsed[me] = true;
-  return {
-    rules: g.rules,
-    hands: [move.hands[0].slice(), move.hands[1].slice()],
-    turn: 1 - me,
-    swapStreak,
-    switchUsed,
-  };
+  const hands = move.hands.map((h) => h.slice());
+  // Recompute who's out from the resulting hands so the turn hand-off (which
+  // may skip more than one seat in a 3+ player game) is correct.
+  const eliminated = hands.map((h) => h[0] === 0 && h[1] === 0);
+  const s = { rules: g.rules, hands, turn: me, swapStreak, switchUsed, eliminated };
+  s.turn = C.nextTurn(s, me);
+  return s;
 }
 
 /* After we play `move`, does the opponent have a reply that knocks out
@@ -60,15 +60,17 @@ const CPUS = {
     description: "Attacks the lowest hand with its lowest; if that would let " +
       "the opponent knock out one of its hands, plays randomly instead.",
     choose(g, moves, rng = Math.random) {
-      const me = g.turn, opp = 1 - me;
+      const me = g.turn;
       const attacks = moves.filter((m) => m.kind === "attack");
-      // prefer live targets (death-attack rules also offer dead ones)
-      const pool = attacks.filter((m) => g.hands[opp][m.to.h] > 0);
+      // prefer live targets (death-attack rules also offer dead ones); each
+      // attack names its own target seat via m.to.p, so this works for any
+      // number of opponents.
+      const pool = attacks.filter((m) => g.hands[m.to.p][m.to.h] > 0);
       let favorite = null;
       for (const m of (pool.length ? pool : attacks)) {
         if (!favorite) { favorite = m; continue; }
-        const t = g.hands[opp][m.to.h], a = g.hands[me][m.from.h];
-        const ft = g.hands[opp][favorite.to.h], fa = g.hands[me][favorite.from.h];
+        const t = g.hands[m.to.p][m.to.h], a = g.hands[me][m.from.h];
+        const ft = g.hands[favorite.to.p][favorite.to.h], fa = g.hands[me][favorite.from.h];
         if (t < ft || (t === ft && a < fa)) favorite = m;
       }
       if (favorite && !opponentCanKillMyHand(g, favorite)) return favorite;

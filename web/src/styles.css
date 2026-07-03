@@ -5,11 +5,17 @@
   --line: #d8cbb8;
   --p1: #2f7fd1;
   --p2: #d1642f;
+  --p3: #7c53d6;
+  --p4: #c2911f;
   --good: #3ba55d;
   --skin1: #e9b98d;
   --skin1-dark: #c99465;
   --skin2: #c98a5e;
   --skin2-dark: #a56a41;
+  --skin3: #d7a781;
+  --skin3-dark: #b07f57;
+  --skin4: #e7c197;
+  --skin4-dark: #c39a68;
   --neg: #8ea6d6;
   --neg-dark: #5f74ad;
   --dead: #b9b2a8;
@@ -20,6 +26,8 @@
   --btn-hover: #f3ead9;
   --p1-soft: #eaf3fc;
   --p2-soft: #fcf0ea;
+  --p3-soft: #f0eafc;
+  --p4-soft: #f8f1dc;
   --good-soft: #ecf7f0;
   --hand-idle-bg: #fbf6ec;
   --hand-idle-border: #e4d9c4;
@@ -41,6 +49,8 @@
   --btn-hover: #3d372f;
   --p1-soft: #24384a;
   --p2-soft: #4a3324;
+  --p3-soft: #322850;
+  --p4-soft: #423619;
   --good-soft: #24402f;
   --hand-idle-bg: #35302a;
   --hand-idle-border: #4a4038;
@@ -102,6 +112,7 @@ body.in-play #rulesLine {
 .prow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 .prow .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .prow .dot.d0 { background: var(--p1); } .prow .dot.d1 { background: var(--p2); }
+.prow .dot.d2 { background: var(--p3); } .prow .dot.d3 { background: var(--p4); }
 .prow input[type=text] { flex: 1; min-width: 0; }
 details#rulesDetails { border: 1.5px solid var(--line); border-radius: 10px; padding: 4px 12px; }
 details#rulesDetails summary { cursor: pointer; font-weight: 600; font-size: .9rem; padding: 4px 0; }
@@ -130,9 +141,39 @@ details#rulesDetails summary { cursor: pointer; font-weight: 600; font-size: .9r
 }
 .name-tag .dot { width: 10px; height: 10px; border-radius: 50%; }
 .p0 .dot { background: var(--p1); } .p1 .dot { background: var(--p2); }
+.p2 .dot { background: var(--p3); } .p3 .dot { background: var(--p4); }
 .name-tag.active.p0 { border-color: var(--p1); background: var(--p1-soft); }
 .name-tag.active.p1 { border-color: var(--p2); background: var(--p2-soft); }
+.name-tag.active.p2 { border-color: var(--p3); background: var(--p3-soft); }
+.name-tag.active.p3 { border-color: var(--p4); background: var(--p4-soft); }
+.name-tag.out { opacity: .5; text-decoration: line-through; }
 .hands { display: flex; gap: 26px; }
+
+/* Polygon "table" for 3+ players: seats placed around a circle (positions set
+   inline by the store) so the active seat sweeps around in turn order. The
+   seats are absolutely positioned, so the arena carries its own definite size
+   (via min(px, vw)) rather than relying on an ancestor's width. */
+.arena { position: relative; width: min(560px, 96vw); height: 460px; margin: 6px auto 0; }
+.arena.seats-4 { height: 500px; }
+.arena .seat {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.arena .seat.out { opacity: .55; }
+.arena .hands { gap: 12px; }
+#board .arena .hand { width: 104px; }
+#board .arena.seats-4 .hand { width: 92px; }
+.dir-glyph {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 3.6rem; color: var(--muted); opacity: .22; pointer-events: none; user-select: none;
+}
+@media (max-width: 560px) {
+  .arena { height: 384px; }
+  .arena.seats-4 { height: 408px; }
+  #board .arena .hand { width: 72px; }
+  #board .arena.seats-4 .hand { width: 64px; }
+  .dir-glyph { font-size: 2.9rem; }
+}
 .hand {
   width: 128px; padding: 4px; border-radius: 14px; border: 3px solid transparent;
   background: transparent; text-align: center; position: relative;
@@ -194,3 +235,4 @@ body.in-play #watchbar.show {
 #log div:nth-child(odd) { background: var(--log-alt); }
 #log .who { font-weight: 700; }
 #log .who.w0 { color: var(--p1); } #log .who.w1 { color: var(--p2); }
+#log .who.w2 { color: var(--p3); } #log .who.w3 { color: var(--p4); }
