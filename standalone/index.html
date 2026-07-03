@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🥢 Chopsticks</title>
+  <link rel="stylesheet" href="./styles.css">
+  <!-- No build step: Vue's full ES-module build (with the template compiler) is
+       loaded straight from a CDN, and the game core / store are the same ES
+       modules the Vite app uses, imported natively. Serve this folder over HTTP
+       (e.g. `python3 -m http.server`) and open it. -->
+  <script type="importmap">
+  { "imports": { "vue": "https://unpkg.com/vue@3.5.13/dist/vue.esm-browser.prod.js" } }
+  </script>
+</head>
+<body>
+  <!-- The whole UI is one flat template. It's the Vite app's Single-File
+       Components inlined, with the shared store exposed as `g`, so every binding
+       is identical to the component versions (src/components/*.vue). -->
+  <div id="app" v-cloak>
+    <!-- TheHeader.vue -->
+    <header>
+      <h1 id="logo" title="Back to main menu" @click="g.openSetup">🥢 Chopsticks</h1>
+      <span class="spacer"></span>
+      <button id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode"
+              @click="g.toggleTheme">{{ g.themeIcon }}</button>
+      <button id="navSetup" class="play-only" @click="g.openSetup">☰ Main menu</button>
+      <button id="undoBtn" class="play-only" :disabled="g.undoDisabled" @click="g.undo">↺ Undo</button>
+      <button id="cheatBtn" class="play-only" :class="{ active: g.cheat }"
+              title="Cheat: reveal the optimal move" :aria-pressed="g.cheat ? 'true' : 'false'"
+              @click="g.toggleCheat">👁 Cheat</button>
+      <button id="newGameBtn" class="primary play-only" @click="g.startGame">New game</button>
+    </header>
+
+    <div id="rulesLine">{{ g.rulesLine }}</div>
+
+    <!-- SetupScreen.vue -->
+    <main id="setup" class="view" :class="{ active: g.view === 'setup' }">
+      <div class="setup-card">
+        <h2>🥢 Chopsticks</h2>
+        <p class="tagline">Set up a game, then start playing.</p>
+
+        <div class="mode-row">
+          <button class="mode-btn" :class="{ active: g.currentMode === 'single' }" @click="g.setMode('single')">🤖 Single player</button>
+          <button class="mode-btn" :class="{ active: g.currentMode === 'two' }" @click="g.setMode('two')">👥 Two players</button>
+          <button class="mode-btn" :class="{ active: g.currentMode === 'watch' }" @click="g.setMode('watch')">🤖👀 Watch CPUs</button>
+        </div>
+
+        <div class="fgroup">Players</div>
+        <!-- PlayerRow.vue, once per player -->
+        <div class="prow" v-for="p in [0, 1]" :key="p">
+          <span class="dot" :class="'d' + p"></span>
+          <input type="text" maxlength="16" :placeholder="g.namePlaceholder(p)"
+                 :style="{ visibility: g.controllers[p] === 'remote' ? 'hidden' : '' }"
+                 v-model="g.names[p]">
+          <select :style="{ flex: g.controllers[p] === 'remote' ? 'none' : '1' }"
+                  v-model="g.controllers[p]" @change="g.ctrlChanged(p)">
+            <option value="human">Human</option>
+            <option v-for="c in g.cpuNames" :key="c" :value="c">{{ 'CPU: ' + c }}</option>
+          </select>
+          <input type="number" class="port" min="1" max="65535" placeholder="port"
+                 title="Remote engine port on localhost" v-show="g.controllers[p] === 'remote'"
+                 :value="g.remotePorts[p]" @change="g.setPort(p, $event.target.value)">
+        </div>
+        <span class="note" v-show="g.anyRemote">“CPU: remote” connects to an engine process at localhost:&lt;port&gt;.</span>
+
+        <!-- RuleForm.vue -->
+        <div class="fgroup">Rules</div>
+        <div class="preset-row">
+          <label><span>Preset</span>
+            <select id="presetSelect" v-model="g.currentPreset" @change="g.presetChanged">
+              <option v-for="pr in g.builtinPresets" :key="pr.name" :value="pr.name" :title="pr.desc">{{ pr.name }}</option>
+              <optgroup v-if="g.customPresetNames.length" label="Your presets">
+                <option v-for="n in g.customPresetNames" :key="n" :value="n" :title="g.presetTitle(n)">{{ n }}</option>
+              </optgroup>
+              <option value="custom">custom</option>
+            </select>
+          </label>
+          <button id="deletePresetBtn" title="Delete this saved preset"
+                  v-show="!!g.customPresets[g.currentPreset]" @click="g.deletePreset">🗑 Delete</button>
+        </div>
+        <details id="rulesDetails">
+          <summary>Advanced rules…</summary>
+          <div id="ruleForm">
+            <template v-for="(f, i) in g.RULE_FIELDS" :key="i">
+              <div v-if="f.group" class="fgroup">{{ f.group }}</div>
+              <label v-else class="field">
+                <template v-if="f.type === 'bool'">
+                  <input type="checkbox" v-model="g.fv[f.key]" @change="g.markCustom"> {{ ' ' + f.label }}
+                </template>
+                <template v-else>
+                  {{ f.label + ' ' }}<input type="number" :min="f.min" :max="f.max" v-model.number="g.fv[f.key]" @change="g.markCustom">
+                </template>
+              </label>
+            </template>
+          </div>
+          <div class="preset-save">
+            <input type="text" maxlength="24" placeholder="Name for a new preset" v-model="g.presetName">
+            <button @click="g.savePreset">Save current rules</button>
+          </div>
+        </details>
+
+        <div class="setup-actions">
+          <button class="primary" @click="g.start">Start game</button>
+          <button @click="g.reset">Reset to defaults</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- PlayScreen.vue (shown once a game exists) -->
+    <main id="play" class="view" :class="{ active: g.view === 'play' }" v-if="g.game">
+      <!-- GameBoard.vue -->
+      <section id="board">
+        <div id="result" :class="{ show: g.showResult }">
+          <div class="verdict">{{ g.verdict }}</div>
+          <div class="reason">{{ g.reason }}</div>
+          <div class="result-actions">
+            <button class="primary" @click="g.startGame">Play again</button>
+            <button @click="g.openSetup">Main menu</button>
+          </div>
+        </div>
+        <div id="watchbar" :class="{ show: g.watchLive }">
+          <span class="wlabel">CPU vs CPU:</span>
+          <button @click="g.toggleAuto">{{ g.autoToggleText }}</button>
+          <button v-show="g.showStep" :disabled="g.stepDisabled" @click="g.stepCPU">Step ▶</button>
+        </div>
+        <div class="player-row">
+          <div class="name-tag p1" :class="{ active: g.activeP === 1 }"><span class="dot"></span><span class="nm">{{ g.labelTop }}</span></div>
+          <div class="hands">
+            <!-- opponent faces you: their right hand is on your left -->
+            <div class="hand" :class="g.handMods(1, 1)" v-html="g.handHtml(1, 1)" @click="g.onHandClick(1, 1)"></div>
+            <div class="hand" :class="g.handMods(1, 0)" v-html="g.handHtml(1, 0)" @click="g.onHandClick(1, 0)"></div>
+          </div>
+        </div>
+        <div id="hint">{{ g.hintText }}</div>
+        <div id="cheat" :class="{ on: g.cheatUI.on }" aria-live="polite">{{ g.cheatUI.text }}</div>
+        <div class="player-row">
+          <div class="hands">
+            <div class="hand" :class="g.handMods(0, 0)" v-html="g.handHtml(0, 0)" @click="g.onHandClick(0, 0)"></div>
+            <div class="hand" :class="g.handMods(0, 1)" v-html="g.handHtml(0, 1)" @click="g.onHandClick(0, 1)"></div>
+          </div>
+          <div class="name-tag p0" :class="{ active: g.activeP === 0 }"><span class="dot"></span><span class="nm">{{ g.labelBottom }}</span></div>
+        </div>
+        <div id="movebar">
+          <button v-for="(b, i) in g.play.buttons" :key="i" :class="{ primary: b.primary }"
+                  :disabled="b.disabled" @click="b.action()">{{ b.text }}</button>
+        </div>
+      </section>
+      <!-- MoveLog.vue -->
+      <aside id="logPanel">
+        <h2>Move log</h2>
+        <div id="log">
+          <div v-for="(e, i) in g.logEntries" :key="i"><span class="who" :class="'w' + e.player">{{ e.who }}</span> {{ e.label }}</div>
+          <div v-if="g.outcome"><b>{{ g.outcome }}</b></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script type="module">
+    import { createApp, watch, nextTick } from "vue";
+    import { provideGame } from "./composables/useChopsticks.js";
+
+    createApp({
+      setup() {
+        const g = provideGame();
+        // Keep the move log pinned to the newest entry (MoveLog.vue did this locally).
+        watch(() => [g.logEntries, g.outcome], () => nextTick(() => {
+          const el = document.getElementById("log");
+          if (el) el.scrollTop = el.scrollHeight;
+        }));
+        return { g };
+      },
+    }).mount("#app");
+
+    // The mount host isn't part of the compiled template, so drop its cloak by hand.
+    document.getElementById("app").removeAttribute("v-cloak");
+  </script>
+</body>
+</html>

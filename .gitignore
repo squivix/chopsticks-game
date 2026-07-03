@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local reference material (Wikipedia dump; owner-restricted — not published)
+reference/
+
+# Local-only editor/agent settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+
+# The web app carries its own web/.gitignore (node_modules, dist, test output).
